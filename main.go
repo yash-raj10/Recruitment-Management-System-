@@ -18,6 +18,5 @@ func main(){
 	r.POST("/signup", controller.Signup)
 	r.POST("/login", controller.Login)
 
-
 	r.Run(":8080")
 }
