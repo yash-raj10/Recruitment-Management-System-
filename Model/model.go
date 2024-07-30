@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/golang-jwt/jwt"
 	"github.com/joho/godotenv"
@@ -45,8 +46,20 @@ type Claims struct {
 	jwt.StandardClaims
 }
 
+type Job struct {
+	ID                primitive.ObjectID `bson:"_id,omitempty"`
+	Title             string             `bson:"title"`
+	Description       string             `bson:"description"`
+	PostedOn          time.Time          `bson:"postedOn"`
+	TotalApplications int                `bson:"totalApplications"`
+	CompanyName       string             `bson:"companyName"`
+	PostedBy          primitive.ObjectID `bson:"postedBy"`
+}
+
 
 var Collection1 *mongo.Collection
+var Collection2 *mongo.Collection
+
 
 func InitDB() {
 	err := godotenv.Load(".env.local")
@@ -65,5 +78,7 @@ func InitDB() {
 	fmt.Println("Connection Success")
 
 	Collection1 = client.Database("recruitment_system").Collection("users")
+	Collection2 = client.Database("recruitment_system").Collection("jobs")
+
 	fmt.Println("Instance is Ready")
 }

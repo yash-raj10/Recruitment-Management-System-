@@ -121,10 +121,40 @@ func UploadResume(c *gin.Context) {
 		return
 	}
 
-	// Process resume using API
-	resumeData, err := processResume("uploads/" + filename)
+	fileH, err := os.Open("uploads/" + filename)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to process resume"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to opennn resume"})
+		return
+	}
+	defer fileH.Close()
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", "https://api.apilayer.com/resume_parser/upload", fileH)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to make api call (resume)"})
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("apikey", "gNiXyflsFu3WNYCz1ZCxdWDb7oQg1Nl1")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get resp (resume)"})
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get body (resume)"})
+		return
+	}
+
+	var resumeData ResumeData
+	err = json.Unmarshal(body, &resumeData)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get resumeData (resume)", "data": resp.Body})
 		return
 	}
 
@@ -152,42 +182,6 @@ func UploadResume(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Resume uploaded and processed successfully"})
 }
 
-func processResume(filePath string) (*ResumeData, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", "https://api.apilayer.com/resume_parser/upload", file)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/octet-stream")
-	req.Header.Set("apikey", "gNiXyflsFu3WNYCz1ZCxdWDb7oQg1Nl1")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var resumeData ResumeData
-	err = json.Unmarshal(body, &resumeData)
-	if err != nil {
-		return nil, err
-	}
-
-	return &resumeData, nil
-}
-
 type ResumeData struct {
 	Education  string `json:"education"`
 	Email      string      `json:"email"`
@@ -195,4 +189,59 @@ type ResumeData struct {
 	Name       string      `json:"name"`
 	Phone      string      `json:"phone"`
 	Skills     []string    `json:"skills"`
+}
+
+func CreateJob(c *gin.Context) {
+	var job model.Job
+	if err := c.BindJSON(&job); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	userId, _ := c.Get("userId")
+	objectId, _ := primitive.ObjectIDFromHex(userId.(string))
+	job.PostedBy = objectId
+	job.PostedOn = time.Now()
+
+	_, err := model.Collection2.InsertOne(context.TODO(), job)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create job"})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Job created successfully"})
+}
+
+func GetApplicants(c *gin.Context) {
+	cursor, err := model.Collection1.Find(context.TODO(), bson.M{"userType": "Applicant"})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch applicants"})
+		return
+	}
+	defer cursor.Close(context.TODO())
+
+	var applicants []model.User
+	if err = cursor.All(context.TODO(), &applicants); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode applicants"})
+		return
+	}
+
+	c.JSON(http.StatusOK, applicants)
+}
+
+func GetApplicant(c *gin.Context) {
+	applicantId, err := primitive.ObjectIDFromHex(c.Param("applicant_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid applicant ID"})
+		return
+	}
+
+	var applicant model.User
+	err =  model.Collection1.FindOne(context.TODO(), bson.M{"_id": applicantId, "userType": "Applicant"}).Decode(&applicant)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Applicant not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, applicant)
 }
